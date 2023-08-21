@@ -76,6 +76,38 @@ ORDER BY table_name`,
 			if rows.Err() != nil {
 				return Result{}, errors.Wrap(err, "error collecting tables metadata")
 			}
+			if err := rows.Close(); err != nil {
+				return Result{}, err
+			}
+		case *dbconn.OracleConn:
+			rows, err := conn.QueryContext(
+				ctx,
+				`select tablespace_name, table_name from all_tables where tablespace_name not in ( 'SYSTEM', 'SYSAUX', 'ADMINISTRATOR' )`,
+			)
+			if err != nil {
+				return Result{}, err
+			}
+
+			for rows.Next() {
+				var sn string
+				var tn string
+				if err := rows.Scan(&sn, &tn); err != nil {
+					return Result{}, errors.Wrap(err, "error decoding tables metadata")
+				}
+				tm := dbtable.DBTable{
+					Name: dbtable.Name{
+						Schema: tree.Name(sn),
+						Table:  tree.Name(tn),
+					},
+				}
+				tms = append(tms, tm)
+			}
+			if rows.Err() != nil {
+				return Result{}, errors.Wrap(err, "error collecting tables metadata")
+			}
+			if err := rows.Close(); err != nil {
+				return Result{}, err
+			}
 		case *dbconn.PGConn:
 			rows, err := conn.Query(
 				ctx,
@@ -99,6 +131,7 @@ ORDER BY 3, 2`,
 			if rows.Err() != nil {
 				return Result{}, errors.Wrap(err, "error collecting tables metadata")
 			}
+			rows.Close()
 		default:
 			return Result{}, errors.Newf("connection %T not supported", conn)
 		}

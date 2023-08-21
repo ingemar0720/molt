@@ -58,6 +58,20 @@ func (r *mysqlRows) Close() {
 	_ = r.Rows.Close()
 }
 
+type oracleRows struct {
+	*sql.Rows
+	typMap  *pgtype.Map
+	typOIDs []oid.Oid
+}
+
+func (r *oracleRows) Datums() (tree.Datums, error) {
+	return mysqlconv.ScanRowDynamicTypes(r.Rows, r.typMap, r.typOIDs)
+}
+
+func (r *oracleRows) Close() {
+	_ = r.Rows.Close()
+}
+
 type pgRows struct {
 	pgx.Rows
 	typMap  *pgtype.Map

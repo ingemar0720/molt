@@ -24,3 +24,11 @@ services:
       - postgres
       - -c
       - wal_level=logical
+  #oracle:
+  #  image: container-registry.oracle.com/database/express:21.3.0-xe
+  #  platform: linux/x86_64
+  #  environment:
+  #    ORACLE_PWD: bobby-123
+  #  ports:
+  #    - "1521:1521"
+  #    - "5500:5500"
