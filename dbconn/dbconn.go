@@ -69,6 +69,8 @@ func Connect(ctx context.Context, preferredID ID, connStr string) (Conn, error) 
 		return ConnectPG(ctx, id, connStr)
 	case strings.Contains(before[0], "mysql"):
 		return ConnectMySQL(ctx, id, before[len(before)-1])
+	case strings.Contains(before[0], "oracle"):
+		return ConnectOracle(ctx, id, connStr)
 	}
 	return nil, errors.Newf("unrecognised scheme %s from %s", before[0], connStr)
 }
@@ -110,6 +112,24 @@ func TestOnlyCleanDatabase(ctx context.Context, id ID, url string, dbName string
 		}
 		cfgCopy.DBName = dbName
 		return ConnectMySQL(ctx, c.id, cfgCopy.FormatDSN())
+	case *OracleConn:
+		if _, err := c.ExecContext(ctx, "DROP USER "+dbName+" CASCADE"); err != nil && !strings.Contains(err.Error(), "ORA-01918") {
+			return nil, err
+		}
+		if _, err := c.ExecContext(ctx, "CREATE USER "+dbName); err != nil {
+			return nil, err
+		}
+		if _, err := c.ExecContext(ctx, "GRANT dba TO "+dbName); err != nil {
+			return nil, err
+		}
+		conn, err := ConnectOracle(ctx, c.id, c.connStr)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := c.ExecContext(ctx, "alter session set current_schema "+dbName); err != nil {
+			return nil, err
+		}
+		return conn, nil
 	}
 	return nil, errors.AssertionFailedf("clean database not supported for %T", c)
 }

@@ -2,6 +2,7 @@ package rowiterator
 
 import (
 	"context"
+	"fmt"
 	"go/constant"
 	"strings"
 	"time"
@@ -64,6 +65,8 @@ func NewScanIterator(
 		it.scanQuery = newPGScanQuery(table, rowBatchSize)
 	case *dbconn.MySQLConn:
 		it.scanQuery = newMySQLScanQuery(table, rowBatchSize)
+	case *dbconn.OracleConn:
+		it.scanQuery = newOracleScanQuery(table, rowBatchSize)
 	default:
 		return nil, errors.Newf("unsupported conn type %T", conn)
 	}
@@ -112,7 +115,7 @@ func (it *scanIterator) nextPage(ctx context.Context) {
 	go func() {
 		datums, err := func() ([]tree.Datums, error) {
 			var currRows rows
-			q, err := it.scanQuery.generate(it.pkCursor)
+			q, args, err := it.scanQuery.generate(it.pkCursor)
 			if err != nil {
 				return nil, err
 			}
@@ -123,9 +126,9 @@ func (it *scanIterator) nextPage(ctx context.Context) {
 			}
 			switch conn := it.conn.(type) {
 			case *dbconn.PGConn:
-				newRows, err := conn.Query(ctx, q)
+				newRows, err := conn.Query(ctx, q, args...)
 				if err != nil {
-					return nil, errors.Wrapf(err, "error getting rows for table %s.%s from %s", it.table.Schema, it.table.Table, it.conn.ID)
+					return nil, errors.Wrapf(err, "error getting rows for table %s.%s from %s", it.table.Schema, it.table.Table.Name, it.conn.ID)
 				}
 				currRows = &pgRows{
 					Rows:    newRows,
@@ -133,11 +136,21 @@ func (it *scanIterator) nextPage(ctx context.Context) {
 					typOIDs: it.table.ColumnOIDs,
 				}
 			case *dbconn.MySQLConn:
-				newRows, err := conn.QueryContext(ctx, q)
+				newRows, err := conn.QueryContext(ctx, q, args...)
 				if err != nil {
-					return nil, errors.Wrapf(err, "error getting rows for table %s in %s", it.table.Table, it.conn.ID())
+					return nil, errors.Wrapf(err, "error getting rows for table %s in %s", it.table.Table.Name, it.conn.ID())
 				}
 				currRows = &mysqlRows{
+					Rows:    newRows,
+					typMap:  it.conn.TypeMap(),
+					typOIDs: it.table.ColumnOIDs,
+				}
+			case *dbconn.OracleConn:
+				newRows, err := conn.QueryContext(ctx, q, args...)
+				if err != nil {
+					return nil, errors.Wrapf(err, "error getting rows for table %s in %s", it.table.Table.Name, it.conn.ID())
+				}
+				currRows = &oracleRows{
 					Rows:    newRows,
 					typMap:  it.conn.TypeMap(),
 					typOIDs: it.table.ColumnOIDs,
@@ -233,6 +246,22 @@ func NewPGBaseSelectClause(table Table) *tree.Select {
 	return baseSelectExpr
 }
 
+type oracleStatement struct {
+	rowBatchSize int
+}
+
+func newOracleScanQuery(table ScanTable, rowBatchSize int) scanQuery {
+	if len(table.StartPKVals) > 0 || len(table.EndPKVals) > 0 {
+		panic("sharding on oracle not yet supported")
+	}
+	return scanQuery{
+		table: table,
+		base: &oracleStatement{
+			rowBatchSize: rowBatchSize,
+		},
+	}
+}
+
 func newMySQLScanQuery(table ScanTable, rowBatchSize int) scanQuery {
 	stmt := newMySQLBaseSelectClause(table.Table)
 	stmt.Limit = &ast.Limit{Count: ast.NewValueExpr(rowBatchSize, "", "")}
@@ -276,7 +305,7 @@ func newMySQLBaseSelectClause(table Table) *ast.SelectStmt {
 	}
 }
 
-func (sq *scanQuery) generate(pkCursor tree.Datums) (string, error) {
+func (sq *scanQuery) generate(pkCursor tree.Datums) (string, []any, error) {
 	switch stmt := sq.base.(type) {
 	case *tree.Select:
 		andClause := &tree.AndExpr{
@@ -310,7 +339,41 @@ func (sq *scanQuery) generate(pkCursor tree.Datums) (string, error) {
 		}
 		f := tree.NewFmtCtx(tree.FmtParsableNumerics)
 		f.FormatNode(stmt)
-		return f.CloseAndGetString(), nil
+		return f.CloseAndGetString(), nil, nil
+	case *oracleStatement:
+		// TODO: escaping names is not supported.
+		sb := strings.Builder{}
+		sb.WriteString("SELECT ")
+		for i := range sq.table.ColumnNames {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(string(sq.table.ColumnNames[i]))
+		}
+		sb.WriteString(" FROM ")
+		sb.WriteString(string(sq.table.Name.Table))
+
+		if len(pkCursor) > 0 {
+			sb.WriteString(" WHERE ")
+			// TODO: support multi-pk keys
+			if len(sq.table.PrimaryKeyColumns) > 1 {
+				panic("unsupported")
+			}
+			f := tree.NewFmtCtx(tree.FmtBareStrings)
+			f.FormatNode(pkCursor[0])
+			// TODO: support converting data types back into string representations in oracle.
+			sb.WriteString(fmt.Sprintf("%s > '%s'", sq.table.PrimaryKeyColumns[0], f.CloseAndGetString()))
+		}
+
+		sb.WriteString(" ORDER BY ")
+		for i := range sq.table.PrimaryKeyColumns {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(string(sq.table.PrimaryKeyColumns[i]))
+		}
+		sb.WriteString(fmt.Sprintf(" FETCH NEXT %d ROWS ONLY", stmt.rowBatchSize))
+		return sb.String(), nil, nil
 	case *ast.SelectStmt:
 		andClause := &ast.BinaryOperationExpr{
 			Op: opcode.LogicAnd,
@@ -341,11 +404,11 @@ func (sq *scanQuery) generate(pkCursor tree.Datums) (string, error) {
 		stmt.Where = andClause
 		var sb strings.Builder
 		if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
-			return "", errors.Wrap(err, "error generating MySQL statement")
+			return "", nil, errors.Wrap(err, "error generating MySQL statement")
 		}
-		return sb.String(), nil
+		return sb.String(), nil, nil
 	}
-	return "", errors.AssertionFailedf("unknown scan query type: %T", sq.base)
+	return "", nil, errors.AssertionFailedf("unknown scan query type: %T", sq.base)
 }
 
 func makeMySQLCompareExpr(

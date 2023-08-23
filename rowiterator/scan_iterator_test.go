@@ -1,6 +1,7 @@
 package rowiterator
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -37,9 +38,16 @@ func TestScanQuery(t *testing.T) {
 				return ""
 			case "generate":
 				require.NotNil(t, sq.base)
-				s, err := sq.generate(parseDatums(t, d.Input, "\n"))
+				s, args, err := sq.generate(parseDatums(t, d.Input, "\n"))
 				require.NoError(t, err)
-				return s
+				ret := s
+				if len(args) > 0 {
+					ret += "\nargs:"
+					for _, arg := range args {
+						ret += fmt.Sprintf("\n: %v", arg)
+					}
+				}
+				return ret
 			}
 			t.Errorf("unknown command %s", d.Cmd)
 			return ""
