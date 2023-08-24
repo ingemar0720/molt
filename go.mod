@@ -10,7 +10,7 @@ require (
 	github.com/cockroachdb/crlfmt v0.0.0-20221214225007-b2fc5c302548
 	github.com/cockroachdb/datadriven v1.0.2
 	github.com/cockroachdb/errors v1.9.1
-	github.com/go-sql-driver/mysql v1.7.0
+	github.com/go-sql-driver/mysql v1.7.2-0.20230527164328-99976f4f587d
 	github.com/jackc/pgx/v5 v5.3.0
 	github.com/jstemmer/go-junit-report v1.0.0
 	github.com/lib/pq v1.10.6
