@@ -217,6 +217,7 @@ var testConnStr = []struct {
 			CheckConnLiveness:    true,
 			ColumnsWithAlias:     true,
 			MultiStatements:      true,
+			TLSConfig:            "parsed_30d4087c93e881810918678641ba5ac159bc5e40",
 		},
 		tlsCfg: struct {
 			params     url.Values
@@ -244,6 +245,7 @@ var testConnStr = []struct {
 			CheckConnLiveness:    true,
 			ColumnsWithAlias:     true,
 			MultiStatements:      true,
+			TLSConfig:            "parsed_d703e4191f4328a95d960e2df1231f7080c80be2",
 		},
 		tlsCfg: struct {
 			params     url.Values
@@ -276,13 +278,24 @@ func TestParseConnStr(t *testing.T) {
 		t.Run(conn.in, func(t *testing.T) {
 			cfg, err := ParseConnStr(conn.in)
 			require.NoError(t, err)
+
 			// nil the logger since its unused and will
 			// cause the test to fail.
 			cfg.Logger = nil
+
+			// Check expected TLS configs exist.
+			require.Equal(t, len(conn.tlsCfg.params) > 0, cfg.TLS != nil)
+
 			if cfg.TLS != nil {
 				testTLSCfg, err := newClientTLSConfig(conn.tlsCfg.params, conn.tlsCfg.skipVerify, conn.tlsCfg.address)
 				require.NoError(t, err)
 				checkTLSConfigEqual(t, testTLSCfg, cfg.TLS)
+
+				// If we format the DSN and re-parse it, check the TLS matches as well.
+				reparse, err := mysqldriver.ParseDSN(cfg.FormatDSN())
+				require.NoError(t, err)
+				checkTLSConfigEqual(t, testTLSCfg, reparse.TLS)
+
 				// nil the TLS config now that we have checked the fields.
 				// otherwise require.Equal will fail due to pointer
 				// comparisons.

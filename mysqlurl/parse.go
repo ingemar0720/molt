@@ -1,8 +1,10 @@
 package mysqlurl
 
 import (
+	"crypto/sha1"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"fmt"
 	"net/url"
 	"os"
@@ -67,8 +69,16 @@ func ParseConnStr(connStr string) (*mysqldriver.Config, error) {
 		case "disable":
 			// tls configuration won't be set if we disable sslmode
 		case "require", "verify-ca", "verify-full":
+			// Hash the conn string and register it as a TLS config into the driver,
+			// in case FormatDSN() is used on the config again.
+			hasher := sha1.New()
+			hasher.Write([]byte(connStr))
+			cfg.TLSConfig = "parsed_" + hex.EncodeToString(hasher.Sum(nil))
 			cfg.TLS, err = newClientTLSConfig(params, sslmode == "require", url.Host)
 			if err != nil {
+				return nil, err
+			}
+			if err := mysqldriver.RegisterTLSConfig(cfg.TLSConfig, cfg.TLS); err != nil {
 				return nil, err
 			}
 		default:
@@ -158,10 +168,6 @@ func CfgToConnStr(cfg *mysqldriver.Config, queryEscape bool) string {
 
 	if cfg.Timeout > 0 {
 		urlValues["timeout"] = []string{cfg.Timeout.String()}
-	}
-
-	if len(cfg.TLSConfig) > 0 {
-		urlValues["tls"] = []string{url.QueryEscape(cfg.TLSConfig)}
 	}
 
 	if cfg.WriteTimeout > 0 {
