@@ -68,7 +68,7 @@ func Connect(ctx context.Context, preferredID ID, connStr string) (Conn, error) 
 		}
 		return ConnectPG(ctx, id, connStr)
 	case strings.Contains(before[0], "mysql"):
-		return ConnectMySQL(ctx, id, before[len(before)-1])
+		return ConnectMySQL(ctx, id, connStr)
 	case strings.Contains(before[0], "oracle"):
 		return ConnectOracle(ctx, id, connStr)
 	}
