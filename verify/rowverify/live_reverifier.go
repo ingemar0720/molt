@@ -2,6 +2,7 @@ package rowverify
 
 import (
 	"context"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -165,16 +166,16 @@ func newLiveReverifier(
 					Msgf("live reverifying primary keys")
 				// hard coded mapping of renamed tables when compare row by row
 				mapping := make(map[string]string)
-				mapping["cards"] = "cards_payment_methods"
-				mapping["orig_table"] = "renamed_table"
+				mapping["public.cards"] = "public.cards_payment_methods"
+				mapping["public.orig_table"] = "public.renamed_table"
 				var iterators [2]rowiterator.Iterator
 				for i, conn := range conns {
 					newTableName := table.Name
-					val, ok := mapping[table.Name.Table.String()]
+					val, ok := mapping[table.Name.SafeString()]
 					if ok && conn.ID() == "target" {
 						newTableName = dbtable.Name{
 							Schema: table.Name.Schema,
-							Table:  tree.Name(val),
+							Table:  tree.Name(strings.TrimPrefix(val, "public.")),
 						}
 					}
 					iterators[i] = rowiterator.NewPointLookupIterator(

@@ -55,11 +55,11 @@ func NewScanIterator(
 
 	// hard coded mapping of renamed tables when compare row by row
 	mapping := make(map[string]string)
-	mapping["cards"] = "cards_payment_methods"
-	mapping["orig_table"] = "renamed_table"
-	val, ok := mapping[table.Name.Table.String()]
+	mapping["public.cards"] = "public.cards_payment_methods"
+	mapping["public.orig_table"] = "public.renamed_table"
+	val, ok := mapping[table.Name.SafeString()]
 	if ok && conn.ID() == "target" {
-		table.Name.Table = tree.Name(val)
+		table.Name.Table = tree.Name(strings.TrimPrefix(val, "public."))
 	}
 
 	it := &scanIterator{
