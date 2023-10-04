@@ -2,12 +2,14 @@ package rowverify
 
 import (
 	"context"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/cockroachdb-parser/pkg/sql/sem/tree"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/molt/dbconn"
+	"github.com/cockroachdb/molt/dbtable"
 	"github.com/cockroachdb/molt/retry"
 	"github.com/cockroachdb/molt/rowiterator"
 	"github.com/cockroachdb/molt/verify/inconsistency"
@@ -162,12 +164,24 @@ func newLiveReverifier(
 					Time("next_retry", it.Retry.NextRetry).
 					Int("num_failed_keys", len(it.PrimaryKeys)).
 					Msgf("live reverifying primary keys")
+				// hard coded mapping of renamed tables when compare row by row
+				mapping := make(map[string]string)
+				mapping["public.cards"] = "public.cards_payment_methods"
+				mapping["public.orig_table"] = "public.renamed_table"
 				var iterators [2]rowiterator.Iterator
 				for i, conn := range conns {
+					newTableName := table.Name
+					val, ok := mapping[table.Name.SafeString()]
+					if ok && conn.ID() == "target" {
+						newTableName = dbtable.Name{
+							Schema: table.Name.Schema,
+							Table:  tree.Name(strings.TrimPrefix(val, "public.")),
+						}
+					}
 					iterators[i] = rowiterator.NewPointLookupIterator(
 						conn,
 						rowiterator.Table{
-							Name:              table.Name,
+							Name:              newTableName,
 							ColumnNames:       table.Columns,
 							ColumnOIDs:        table.ColumnOIDs[i],
 							PrimaryKeyColumns: table.PrimaryKeyColumns,

@@ -169,7 +169,19 @@ func compare(iterators [2]tableVerificationIterator) Result {
 		// tables.
 		compareVal := 1
 		if !nonTruthIterator.done() {
-			compareVal = nonTruthIterator.curr().Compare(truthIterator.curr())
+			//hard codeed mapping of renamed tables
+			mapping := make(map[string]string)
+			mapping["public.cards"] = "public.cards_payment_methods"
+			mapping["public.orig_table"] = "public.renamed_table"
+			if val, ok := mapping[truthIterator.curr().String()]; ok {
+				if val == nonTruthIterator.curr().String() {
+					compareVal = 0
+				} else {
+					compareVal = nonTruthIterator.curr().Compare(truthIterator.curr())
+				}
+			} else {
+				compareVal = nonTruthIterator.curr().Compare(truthIterator.curr())
+			}
 		}
 		switch compareVal {
 		case -1:

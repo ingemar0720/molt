@@ -52,6 +52,16 @@ func NewScanIterator(
 			return nil, errors.Wrapf(err, "Error initializing type oid %d", typOID)
 		}
 	}
+
+	// hard coded mapping of renamed tables when compare row by row
+	mapping := make(map[string]string)
+	mapping["public.cards"] = "public.cards_payment_methods"
+	mapping["public.orig_table"] = "public.renamed_table"
+	val, ok := mapping[table.Name.SafeString()]
+	if ok && conn.ID() == "target" {
+		table.Name.Table = tree.Name(strings.TrimPrefix(val, "public."))
+	}
+
 	it := &scanIterator{
 		conn:          conn,
 		table:         table,
@@ -128,7 +138,7 @@ func (it *scanIterator) nextPage(ctx context.Context) {
 			case *dbconn.PGConn:
 				newRows, err := conn.Query(ctx, q, args...)
 				if err != nil {
-					return nil, errors.Wrapf(err, "error getting rows for table %s.%s from %s", it.table.Schema, it.table.Table.Name, it.conn.ID)
+					return nil, errors.Wrapf(err, "error getting rows for table %s.%s from %s", it.table.Schema, it.table.Table.Name, it.conn.ID())
 				}
 				currRows = &pgRows{
 					Rows:    newRows,

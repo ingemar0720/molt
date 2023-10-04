@@ -25,7 +25,6 @@ func VerifyCommonTables(
 	ctx context.Context, conns dbconn.OrderedConns, allTables [][2]dbtable.DBTable,
 ) ([]Result, error) {
 	var ret []Result
-
 	for _, cmpTables := range allTables {
 		pkCols, err := getPrimaryKeysForTables(ctx, conns, cmpTables)
 		if err != nil {
