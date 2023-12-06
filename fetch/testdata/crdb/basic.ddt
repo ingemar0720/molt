@@ -20,11 +20,16 @@ INSERT INTO tbl2 VALUES (11, 'aaa'), (22, 'bb b'), (33, 'ééé'), (44, '🫡�
 ----
 [source] INSERT 0 7
 
+exec source
+SELECT pg_sleep(3)
+----
+[source] SELECT 1
+
 fetch
 ----
 
 query all
-SELECT * FROM tbl1
+SELECT * FROM fetch_crdb_basic.public.tbl1
 ----
 [source]:
 id	t
@@ -75,6 +80,14 @@ exec source
 INSERT INTO tbl2 VALUES (111, 'aaa'), (333, 'bb b')
 ----
 [source] INSERT 0 2
+
+
+# We need this sleep as if not, the fetch live won't catch the latest inserted
+# rows with 111 and 333.
+exec source
+SELECT pg_sleep(3)
+----
+[source] SELECT 1
 
 fetch live
 ----

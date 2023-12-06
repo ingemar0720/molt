@@ -20,6 +20,11 @@ INSERT INTO tbl4 VALUES (11, 'aaa'), (22, 'bbb'), (33, 'шанкс'), (44, '♦�
 ----
 [source] INSERT 0 4
 
+exec source
+SELECT pg_sleep(1)
+----
+[source] SELECT 1
+
 fetch compress
 ----
 

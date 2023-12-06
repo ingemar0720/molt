@@ -20,6 +20,11 @@ INSERT INTO tbl2 VALUES (11, 'aaa'), (22, 'bb b'), (33, 'ééé'), (44, '🫡�
 ----
 [source] INSERT 0 7
 
+exec source
+SELECT pg_sleep(1)
+----
+[source] SELECT 1
+
 fetch direct
 ----
 
